@@ -51,6 +51,8 @@ type TestRecord struct {
 	CreatedAt   time.Time
 	UpdatedAt   time.Time
 	Data        string // Large text field for data volume
+	Status      string // Status field for filtering
+	Score       int    // Score field for sorting/filtering
 }
 
 // NewLoadGenerator creates a new load generator

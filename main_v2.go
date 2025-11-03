@@ -1,0 +1,186 @@
+/*
+Copyright AppsCode Inc. and Contributors
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*/
+
+package main
+
+import (
+	"context"
+	"fmt"
+	"os"
+	"os/signal"
+	"syscall"
+	"time"
+
+	"github.com/souravbiswassanto/high-write-load-client/clients/postgres"
+	"github.com/souravbiswassanto/high-write-load-client/config"
+	"github.com/souravbiswassanto/high-write-load-client/metrics"
+)
+
+func main() {
+	fmt.Println("=================================================================")
+	fmt.Println("PostgreSQL High Concurrency Load Testing Client v2")
+	fmt.Println("Supports Read + Write Operations for 10,000+ Concurrent Users")
+	fmt.Println("=================================================================")
+
+	// Load configuration from environment variables
+	cfg, err := config.LoadFromEnv()
+	if err != nil {
+		fmt.Printf("Error loading configuration: %v\n", err)
+		os.Exit(1)
+	}
+
+	fmt.Println("\nConfiguration:")
+	fmt.Printf("  Database: %s@%s:%d/%s\n", cfg.DB.User, cfg.DB.Host, cfg.DB.Port, cfg.DB.DBName)
+	fmt.Printf("  Concurrent Workers: %d\n", cfg.Load.ConcurrentWriters)
+	fmt.Printf("  Test Duration: %v\n", cfg.Load.Duration)
+	fmt.Printf("  Batch Size: %d records (inserts), %d records (reads)\n",
+		cfg.Load.BatchSize, cfg.Workload.ReadBatchSize)
+	fmt.Printf("  Workload: %d%% Reads, %d%% Inserts, %d%% Updates\n",
+		cfg.Workload.ReadPercent, cfg.Workload.InsertPercent, cfg.Workload.UpdatePercent)
+	fmt.Printf("  Report Interval: %v\n", cfg.Load.ReportInterval)
+	fmt.Println()
+
+	// Warn if high concurrency
+	if cfg.Load.ConcurrentWriters >= 5000 {
+		fmt.Println("⚠️  HIGH CONCURRENCY MODE")
+		fmt.Printf("  Running with %d concurrent workers\n", cfg.Load.ConcurrentWriters)
+		fmt.Println("  Ensure your database is configured for high concurrency:")
+		fmt.Println("  - max_connections >= 1000")
+		fmt.Println("  - Sufficient shared_buffers")
+		fmt.Println("  - Consider using connection pooler (PgBouncer)")
+		fmt.Println()
+	}
+
+	// Create context with timeout
+	ctx, cancel := context.WithTimeout(context.Background(), cfg.Load.Duration+30*time.Second)
+	defer cancel()
+
+	// Setup signal handling for graceful shutdown
+	sigChan := make(chan os.Signal, 1)
+	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
+
+	// Initialize connection manager
+	fmt.Println("Connecting to PostgreSQL...")
+	cm, err := postgres.NewConnectionManager(&cfg.DB)
+	if err != nil {
+		fmt.Printf("Failed to create connection manager: %v\n", err)
+		os.Exit(1)
+	}
+	defer cm.Close()
+
+	// Initialize metrics
+	m := metrics.NewV2()
+
+	// Initialize enhanced load generator with read support
+	lg := postgres.NewLoadGeneratorV2(cm, cfg, m)
+	if err := lg.Initialize(ctx); err != nil {
+		fmt.Printf("Failed to initialize load generator: %v\n", err)
+		os.Exit(1)
+	}
+
+	// Start connection monitoring in background
+	monitorCtx, monitorCancel := context.WithCancel(ctx)
+	defer monitorCancel()
+
+	go cm.MonitorConnections(monitorCtx, 5*time.Second, func(stats *postgres.ConnectionStats) {
+		m.UpdateConnectionMetrics(stats.CurrentConnections, stats.MaxConnections, stats.AvailableConnections)
+	})
+
+	// Start metrics reporting
+	go func() {
+		ticker := time.NewTicker(cfg.Load.ReportInterval)
+		defer ticker.Stop()
+
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				snapshot := m.GetSnapshot()
+				snapshot.Print()
+			}
+		}
+	}()
+
+	// Start load generation
+	lg.Start(ctx)
+
+	// Create a timer for test duration
+	testTimer := time.NewTimer(cfg.Load.Duration)
+
+	// Wait for either test duration to complete or interrupt signal
+	fmt.Printf("\nStarting load test for %v...\n", cfg.Load.Duration)
+	if cfg.Load.ConcurrentWriters >= 5000 {
+		fmt.Printf("Simulating %d concurrent users\n", cfg.Load.ConcurrentWriters)
+	}
+	fmt.Println("Press Ctrl+C to stop early")
+	fmt.Println()
+
+	select {
+	case <-testTimer.C:
+		fmt.Println("\nTest duration completed")
+	case <-sigChan:
+		fmt.Println("\nReceived interrupt signal, stopping...")
+	case <-ctx.Done():
+		fmt.Println("\nContext cancelled, stopping...")
+	}
+
+	// Stop load generation
+	lg.Stop()
+
+	// Print final metrics
+	fmt.Println("\nFinal Results:")
+	finalSnapshot := m.GetSnapshot()
+	finalSnapshot.Print()
+
+	// Performance summary
+	fmt.Println("\n=================================================================")
+	fmt.Println("Performance Summary:")
+	fmt.Printf("  Average Throughput: %.2f operations/sec\n",
+		float64(finalSnapshot.TotalOperations)/finalSnapshot.Duration.Seconds())
+	if finalSnapshot.TotalReads > 0 {
+		fmt.Printf("  Read Operations: %d (%.2f/sec avg)\n",
+			finalSnapshot.TotalReads,
+			float64(finalSnapshot.TotalReads)/finalSnapshot.Duration.Seconds())
+	}
+	if finalSnapshot.TotalInserts > 0 {
+		fmt.Printf("  Insert Operations: %d (%.2f/sec avg)\n",
+			finalSnapshot.TotalInserts,
+			float64(finalSnapshot.TotalInserts)/finalSnapshot.Duration.Seconds())
+	}
+	if finalSnapshot.TotalUpdates > 0 {
+		fmt.Printf("  Update Operations: %d (%.2f/sec avg)\n",
+			finalSnapshot.TotalUpdates,
+			float64(finalSnapshot.TotalUpdates)/finalSnapshot.Duration.Seconds())
+	}
+	fmt.Printf("  Error Rate: %.4f%%\n",
+		float64(finalSnapshot.TotalErrors)*100/float64(finalSnapshot.TotalOperations+finalSnapshot.TotalErrors))
+	fmt.Printf("  Total Data Transferred: %.2f GB\n", float64(finalSnapshot.TotalBytes)/(1024*1024*1024))
+	fmt.Println("=================================================================")
+
+	// Optional: Cleanup (comment out if you want to keep test data)
+	// Uncomment the following lines if you want to drop the test table after completion
+	/*
+		fmt.Println("\nCleaning up...")
+		cleanupCtx, cleanupCancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cleanupCancel()
+		if err := lg.Cleanup(cleanupCtx); err != nil {
+			fmt.Printf("Warning: Cleanup failed: %v\n", err)
+		}
+	*/
+
+	fmt.Println("\nTest completed successfully!")
+}

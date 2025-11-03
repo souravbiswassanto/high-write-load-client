@@ -60,9 +60,13 @@ type LoadConfig struct {
 
 // WorkloadConfig defines the workload distribution
 type WorkloadConfig struct {
-	InsertPercent int // Percentage of insert operations (0-100)
-	UpdatePercent int // Percentage of update operations (0-100)
-	TableName     string
+	ReadPercent   int    // Percentage of read/SELECT operations (0-100)
+	InsertPercent int    // Percentage of insert operations (0-100)
+	UpdatePercent int    // Percentage of update operations (0-100)
+	TableName     string // Test table name
+
+	// Read operation settings
+	ReadBatchSize int // Number of records to fetch per read operation
 }
 
 // LoadFromEnv loads configuration from environment variables
@@ -89,9 +93,11 @@ func LoadFromEnv() (*Config, error) {
 	cfg.Load.ReportInterval = time.Duration(reportIntervalSecs) * time.Second
 
 	// Workload configuration
+	cfg.Workload.ReadPercent = getEnvAsInt("READ_PERCENT", 0)
 	cfg.Workload.InsertPercent = getEnvAsInt("INSERT_PERCENT", 70)
 	cfg.Workload.UpdatePercent = getEnvAsInt("UPDATE_PERCENT", 30)
 	cfg.Workload.TableName = getEnv("TABLE_NAME", "load_test_data")
+	cfg.Workload.ReadBatchSize = getEnvAsInt("READ_BATCH_SIZE", 10)
 
 	// Validate configuration
 	if err := cfg.Validate(); err != nil {
@@ -124,11 +130,28 @@ func (c *Config) Validate() error {
 	if c.Load.BatchSize < 1 {
 		return fmt.Errorf("BATCH_SIZE must be at least 1")
 	}
-	if c.Workload.InsertPercent+c.Workload.UpdatePercent != 100 {
-		return fmt.Errorf("INSERT_PERCENT + UPDATE_PERCENT must equal 100, got %d + %d = %d",
-			c.Workload.InsertPercent, c.Workload.UpdatePercent,
-			c.Workload.InsertPercent+c.Workload.UpdatePercent)
+
+	// Validate workload percentages
+	totalPercent := c.Workload.ReadPercent + c.Workload.InsertPercent + c.Workload.UpdatePercent
+	if totalPercent != 100 {
+		return fmt.Errorf("READ_PERCENT + INSERT_PERCENT + UPDATE_PERCENT must equal 100, got %d + %d + %d = %d",
+			c.Workload.ReadPercent, c.Workload.InsertPercent, c.Workload.UpdatePercent, totalPercent)
 	}
+
+	if c.Workload.ReadPercent < 0 || c.Workload.ReadPercent > 100 {
+		return fmt.Errorf("READ_PERCENT must be between 0 and 100, got %d", c.Workload.ReadPercent)
+	}
+	if c.Workload.InsertPercent < 0 || c.Workload.InsertPercent > 100 {
+		return fmt.Errorf("INSERT_PERCENT must be between 0 and 100, got %d", c.Workload.InsertPercent)
+	}
+	if c.Workload.UpdatePercent < 0 || c.Workload.UpdatePercent > 100 {
+		return fmt.Errorf("UPDATE_PERCENT must be between 0 and 100, got %d", c.Workload.UpdatePercent)
+	}
+
+	if c.Workload.ReadBatchSize < 1 {
+		return fmt.Errorf("READ_BATCH_SIZE must be at least 1")
+	}
+
 	return nil
 }
 

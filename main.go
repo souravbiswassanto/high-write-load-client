@@ -29,7 +29,7 @@ import (
 	"github.com/souravbiswassanto/high-write-load-client/metrics"
 )
 
-func main() {
+func _main() {
 	fmt.Println("=================================================================")
 	fmt.Println("PostgreSQL High Write Load Testing Client")
 	fmt.Println("=================================================================")
