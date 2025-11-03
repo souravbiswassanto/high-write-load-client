@@ -171,16 +171,15 @@ func main() {
 	fmt.Printf("  Total Data Transferred: %.2f GB\n", float64(finalSnapshot.TotalBytes)/(1024*1024*1024))
 	fmt.Println("=================================================================")
 
-	// Optional: Cleanup (comment out if you want to keep test data)
-	// Uncomment the following lines if you want to drop the test table after completion
-	/*
-		fmt.Println("\nCleaning up...")
-		cleanupCtx, cleanupCancel := context.WithTimeout(context.Background(), 30*time.Second)
-		defer cleanupCancel()
-		if err := lg.Cleanup(cleanupCtx); err != nil {
-			fmt.Printf("Warning: Cleanup failed: %v\n", err)
-		}
-	*/
+	// Cleanup test data table after test completion
+	fmt.Println("\nCleaning up test data...")
+	cleanupCtx, cleanupCancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cleanupCancel()
+	if err := lg.Cleanup(cleanupCtx); err != nil {
+		fmt.Printf("Warning: Cleanup failed: %v\n", err)
+	} else {
+		fmt.Println("Test data table deleted successfully")
+	}
 
 	fmt.Println("\nTest completed successfully!")
 }
