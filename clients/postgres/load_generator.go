@@ -338,17 +338,32 @@ func (lg *LoadGenerator) CheckDataLoss(ctx context.Context) (int64, int64, error
 	fmt.Printf("Checking data loss for %d inserted records...\n", len(insertedIDs))
 
 	// Build query to check which IDs exist in the database
-	// We'll do this in batches to avoid query length limits
-	batchSize := 1000
+	// Use larger batches for better performance (5000 IDs per query)
+	batchSize := 5000
 	found := int64(0)
+	totalBatches := (len(insertedIDs) + batchSize - 1) / batchSize
 
 	for i := 0; i < len(insertedIDs); i += batchSize {
+		// Check context cancellation
+		select {
+		case <-ctx.Done():
+			return 0, 0, fmt.Errorf("data loss check cancelled: %w", ctx.Err())
+		default:
+		}
+
 		end := i + batchSize
 		if end > len(insertedIDs) {
 			end = len(insertedIDs)
 		}
 
 		batch := insertedIDs[i:end]
+		currentBatch := (i / batchSize) + 1
+
+		// Show progress every 10 batches or on last batch
+		if currentBatch%10 == 0 || currentBatch == totalBatches {
+			fmt.Printf("  Progress: Checked %d/%d batches (%.1f%%)\n",
+				currentBatch, totalBatches, float64(currentBatch)*100/float64(totalBatches))
+		}
 
 		// Build the IN clause
 		var idStrs []string
@@ -362,7 +377,7 @@ func (lg *LoadGenerator) CheckDataLoss(ctx context.Context) (int64, int64, error
 		var count int64
 		err := lg.cm.GetDB().QueryRowContext(ctx, query).Scan(&count)
 		if err != nil {
-			return 0, 0, fmt.Errorf("failed to check data loss: %w", err)
+			return 0, 0, fmt.Errorf("failed to check data loss (batch %d/%d): %w", currentBatch, totalBatches, err)
 		}
 
 		found += count

@@ -1,24 +1,24 @@
-apiVersion: v1
-kind: Pod
-metadata:
-  name: pg-debug
-  namespace: demo
-  labels:
-    app: pg-debug
-spec:
-  restartPolicy: Never
-  containers:
-  - name: debug
-    image: postgres:15
-    command: ["/bin/bash", "-c", "sleep 3600"]
-    env:
-    - name: PGHOST
-      value: "pg-ha-cluster.demo.svc.cluster.local"
-    - name: PGPORT
-      value: "5432"
-    - name: PGUSER
-      value: "postgres"
-    - name: PGPASSWORD
-      value: "SVuwzFvw!HJf;vLm"
-    - name: PGDATABASE
-      value: "postgres"
+# apiVersion: v1
+# kind: Pod
+# metadata:
+#   name: pg-debug
+#   namespace: demo
+#   labels:
+#     app: pg-debug
+# spec:
+#   restartPolicy: Never
+#   containers:
+#   - name: debug
+#     image: postgres:15
+#     command: ["/bin/bash", "-c", "sleep 3600"]
+#     env:
+#     - name: PGHOST
+#       value: "pg-ha-cluster.demo.svc.cluster.local"
+#     - name: PGPORT
+#       value: "5432"
+#     - name: PGUSER
+#       value: "postgres"
+#     - name: PGPASSWORD
+#       value: "SVuwzFvw!HJf;vLm"
+#     - name: PGDATABASE
+#       value: "postgres"

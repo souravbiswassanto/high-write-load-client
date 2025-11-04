@@ -133,7 +133,8 @@ func _main() {
 	fmt.Println("\n=================================================================")
 	fmt.Println("Checking for Data Loss...")
 	fmt.Println("=================================================================")
-	dataLossCtx, dataLossCancel := context.WithTimeout(context.Background(), 60*time.Second)
+	// Increase timeout for large datasets - allow 5 minutes for data loss check
+	dataLossCtx, dataLossCancel := context.WithTimeout(context.Background(), 5*time.Minute)
 	defer dataLossCancel()
 
 	totalInsertedIDs, lostRecords, err := lg.CheckDataLoss(dataLossCtx)
