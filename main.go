@@ -129,6 +129,42 @@ func _main() {
 	finalSnapshot := m.GetSnapshot()
 	finalSnapshot.Print()
 
+	// Check for data loss before cleanup
+	fmt.Println("\n=================================================================")
+	fmt.Println("Checking for Data Loss...")
+	fmt.Println("=================================================================")
+	dataLossCtx, dataLossCancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer dataLossCancel()
+
+	totalInsertedIDs, lostRecords, err := lg.CheckDataLoss(dataLossCtx)
+	if err != nil {
+		fmt.Printf("Warning: Data loss check failed: %v\n", err)
+	} else {
+		dataLossPercent := 0.0
+		if totalInsertedIDs > 0 {
+			dataLossPercent = float64(lostRecords) * 100.0 / float64(totalInsertedIDs)
+		}
+
+		fmt.Println("\n=================================================================")
+		fmt.Println("Data Loss Report:")
+		fmt.Println("-----------------------------------------------------------------")
+		fmt.Printf("  Total Records Inserted: %d\n", totalInsertedIDs)
+		fmt.Printf("  Records Found in DB: %d\n", totalInsertedIDs-lostRecords)
+		fmt.Printf("  Records Lost: %d\n", lostRecords)
+		fmt.Printf("  Data Loss Percentage: %.2f%%\n", dataLossPercent)
+		fmt.Println("=================================================================")
+
+		if lostRecords > 0 {
+			fmt.Printf("\n⚠️  WARNING: %d records were inserted but not found in database!\n", lostRecords)
+			fmt.Println("This may indicate:")
+			fmt.Println("  - Database crash/restart occurred during test")
+			fmt.Println("  - pg_rewind was triggered due to network partition")
+			fmt.Println("  - Transaction rollback due to replication issues")
+		} else if totalInsertedIDs > 0 {
+			fmt.Println("\n✅ No data loss detected - all inserted records are present in database")
+		}
+	}
+
 	// Cleanup test data table after test completion
 	fmt.Println("\nCleaning up test data...")
 	cleanupCtx, cleanupCancel := context.WithTimeout(context.Background(), 30*time.Second)

@@ -31,6 +31,10 @@ type Metrics struct {
 	totalErrors  atomic.Int64
 	totalBytes   atomic.Int64
 
+	// Data loss tracking
+	insertedIDs      sync.Map // map[int64]bool - tracks all inserted IDs
+	totalInsertedIDs atomic.Int64
+
 	// Latency tracking
 	insertLatencies []time.Duration
 	updateLatencies []time.Duration
@@ -60,6 +64,11 @@ type MetricsSnapshot struct {
 	TotalOperations int64
 	TotalErrors     int64
 	TotalBytes      int64
+
+	// Data loss tracking
+	TotalInsertedIDs int64
+	LostRecords      int64
+	DataLossPercent  float64
 
 	InsertsPerSec float64
 	UpdatesPerSec float64
@@ -102,6 +111,24 @@ func (m *Metrics) RecordInsert(latency time.Duration, bytesWritten int64) {
 		m.insertLatencies = m.insertLatencies[len(m.insertLatencies)-10000:]
 	}
 	m.latencyMutex.Unlock()
+}
+
+// RecordInsertedID records an inserted record ID for data loss tracking
+func (m *Metrics) RecordInsertedID(id int64) {
+	m.insertedIDs.Store(id, true)
+	m.totalInsertedIDs.Add(1)
+}
+
+// GetInsertedIDs returns all inserted IDs as a slice
+func (m *Metrics) GetInsertedIDs() []int64 {
+	ids := make([]int64, 0)
+	m.insertedIDs.Range(func(key, value interface{}) bool {
+		if id, ok := key.(int64); ok {
+			ids = append(ids, id)
+		}
+		return true
+	})
+	return ids
 }
 
 // RecordUpdate records a successful update operation

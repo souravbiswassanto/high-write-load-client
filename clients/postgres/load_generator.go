@@ -208,7 +208,7 @@ func (lg *LoadGenerator) performInsert(ctx context.Context, rng *rand.Rand) {
 	lg.metrics.RecordInsert(latency, bytesWritten)
 }
 
-// batchInsert performs a batch insert using a single SQL statement
+// batchInsert performs a batch insert using a single SQL statement and records inserted IDs
 func (lg *LoadGenerator) batchInsert(ctx context.Context, records []TestRecord) error {
 	if len(records) == 0 {
 		return nil
@@ -233,13 +233,29 @@ func (lg *LoadGenerator) batchInsert(ctx context.Context, records []TestRecord) 
 		)
 	}
 
+	// Use RETURNING id to get inserted IDs for data loss tracking
 	query := fmt.Sprintf(`
 		INSERT INTO %s (name, email, age, address, phone_number, created_at, data)
 		VALUES %s
+		RETURNING id
 	`, lg.tableName, strings.Join(valueStrings, ","))
 
-	_, err := lg.cm.GetDB().ExecContext(ctx, query, valueArgs...)
-	return err
+	rows, err := lg.cm.GetDB().QueryContext(ctx, query, valueArgs...)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+
+	// Record all inserted IDs for data loss tracking
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			return err
+		}
+		lg.metrics.RecordInsertedID(id)
+	}
+
+	return rows.Err()
 }
 
 // performUpdate executes an update operation
@@ -309,6 +325,56 @@ func (lg *LoadGenerator) Stop() {
 		lg.wg.Wait()
 		fmt.Println("All workers stopped")
 	})
+}
+
+// CheckDataLoss verifies how many inserted records are actually in the database
+func (lg *LoadGenerator) CheckDataLoss(ctx context.Context) (int64, int64, error) {
+	// Get all IDs that were supposedly inserted
+	insertedIDs := lg.metrics.GetInsertedIDs()
+	if len(insertedIDs) == 0 {
+		return 0, 0, nil
+	}
+
+	fmt.Printf("Checking data loss for %d inserted records...\n", len(insertedIDs))
+
+	// Build query to check which IDs exist in the database
+	// We'll do this in batches to avoid query length limits
+	batchSize := 1000
+	found := int64(0)
+
+	for i := 0; i < len(insertedIDs); i += batchSize {
+		end := i + batchSize
+		if end > len(insertedIDs) {
+			end = len(insertedIDs)
+		}
+
+		batch := insertedIDs[i:end]
+
+		// Build the IN clause
+		var idStrs []string
+		for _, id := range batch {
+			idStrs = append(idStrs, fmt.Sprintf("%d", id))
+		}
+
+		query := fmt.Sprintf("SELECT COUNT(*) FROM %s WHERE id IN (%s)",
+			lg.tableName, strings.Join(idStrs, ","))
+
+		var count int64
+		err := lg.cm.GetDB().QueryRowContext(ctx, query).Scan(&count)
+		if err != nil {
+			return 0, 0, fmt.Errorf("failed to check data loss: %w", err)
+		}
+
+		found += count
+	}
+
+	totalInserted := int64(len(insertedIDs))
+	lost := totalInserted - found
+
+	fmt.Printf("Data loss check complete: %d found, %d lost out of %d inserted\n",
+		found, lost, totalInserted)
+
+	return totalInserted, lost, nil
 }
 
 // Cleanup removes the test table
