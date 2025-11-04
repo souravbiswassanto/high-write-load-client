@@ -24,6 +24,7 @@ import (
 
 	_ "github.com/lib/pq" // PostgreSQL driver
 	"github.com/souravbiswassanto/high-write-load-client/config"
+	"k8s.io/klog/v2"
 )
 
 // ConnectionManager manages PostgreSQL connections with safety checks
@@ -48,13 +49,14 @@ func NewConnectionManager(cfg *config.DBConfig) (*ConnectionManager, error) {
 
 	// First, create a connection to check max_connections
 	connStr := cfg.GetConnectionString()
+	klog.Infoln("Connecting to database with connection string:", connStr)
 	db, err := sql.Open("postgres", connStr)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open database connection: %w", err)
 	}
 
-	// Test the connection
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	// Test the connection with a longer timeout for Kubernetes networking
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
 	if err := db.PingContext(ctx); err != nil {

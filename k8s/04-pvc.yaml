@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: pg-load-test-results
+  namespace: demo
+  labels:
+    app: pg-load-test
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+  # Uncomment and specify storageClassName if needed
+  # storageClassName: standard

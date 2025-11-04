@@ -1,0 +1,11 @@
+# NOTE: Using existing 'demo' namespace
+# No need to create a new namespace
+# The demo namespace already exists and contains the PostgreSQL cluster
+#
+# apiVersion: v1
+# kind: Namespace
+# metadata:
+#   name: demo
+#   labels:
+#     app: pg-load-test
+#     environment: testing

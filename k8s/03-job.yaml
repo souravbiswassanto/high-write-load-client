@@ -1,0 +1,163 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: pg-load-test-job
+  namespace: demo
+  labels:
+    app: pg-load-test
+    version: v2
+spec:
+  # Job will run once
+  completions: 1
+  
+  # Don't retry on failure (adjust as needed)
+  backoffLimit: 0
+  
+  # Clean up after 24 hours
+  ttlSecondsAfterFinished: 86400
+  
+  template:
+    metadata:
+      labels:
+        app: pg-load-test
+        version: v2
+    spec:
+      restartPolicy: Never
+      
+      containers:
+      - name: load-test
+        # Replace with your image registry and tag
+        image: souravbiswassanto/pg-load-test:latest
+        imagePullPolicy: Always
+      
+        # Command to run        
+        # Resource limits
+        resources:
+          requests:
+            memory: "1Gi"
+            cpu: "1000m"
+          limits:
+            memory: "2Gi"
+            cpu: "2000m"
+        
+        # Environment variables from ConfigMap
+        env:
+        - name: TEST_RUN_DURATION
+          valueFrom:
+            configMapKeyRef:
+              name: pg-load-test-config
+              key: TEST_RUN_DURATION
+        
+        - name: CONCURRENT_WRITERS
+          valueFrom:
+            configMapKeyRef:
+              name: pg-load-test-config
+              key: CONCURRENT_WRITERS
+        
+        - name: READ_PERCENT
+          valueFrom:
+            configMapKeyRef:
+              name: pg-load-test-config
+              key: READ_PERCENT
+        
+        - name: INSERT_PERCENT
+          valueFrom:
+            configMapKeyRef:
+              name: pg-load-test-config
+              key: INSERT_PERCENT
+        
+        - name: UPDATE_PERCENT
+          valueFrom:
+            configMapKeyRef:
+              name: pg-load-test-config
+              key: UPDATE_PERCENT
+        
+        - name: BATCH_SIZE
+          valueFrom:
+            configMapKeyRef:
+              name: pg-load-test-config
+              key: BATCH_SIZE
+        
+        - name: READ_BATCH_SIZE
+          valueFrom:
+            configMapKeyRef:
+              name: pg-load-test-config
+              key: READ_BATCH_SIZE
+        
+        - name: TABLE_NAME
+          valueFrom:
+            configMapKeyRef:
+              name: pg-load-test-config
+              key: TABLE_NAME
+        
+        - name: MAX_OPEN_CONNS
+          valueFrom:
+            configMapKeyRef:
+              name: pg-load-test-config
+              key: MAX_OPEN_CONNS
+        
+        - name: MAX_IDLE_CONNS
+          valueFrom:
+            configMapKeyRef:
+              name: pg-load-test-config
+              key: MAX_IDLE_CONNS
+        
+        - name: CONN_MAX_LIFETIME
+          valueFrom:
+            configMapKeyRef:
+              name: pg-load-test-config
+              key: CONN_MAX_LIFETIME
+        
+        - name: MIN_FREE_CONNS
+          valueFrom:
+            configMapKeyRef:
+              name: pg-load-test-config
+              key: MIN_FREE_CONNS
+        
+        - name: REPORT_INTERVAL
+          valueFrom:
+            configMapKeyRef:
+              name: pg-load-test-config
+              key: REPORT_INTERVAL
+        
+        # Environment variables from Secret
+        - name: DB_HOST
+          valueFrom:
+            secretKeyRef:
+              name: pg-load-test-secret
+              key: DB_HOST
+        
+        - name: DB_PORT
+          valueFrom:
+            secretKeyRef:
+              name: pg-load-test-secret
+              key: DB_PORT
+        
+        - name: DB_USER
+          valueFrom:
+            secretKeyRef:
+              name: pg-load-test-secret
+              key: DB_USER
+        
+        - name: DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: pg-load-test-secret
+              key: DB_PASSWORD
+        
+        - name: DB_NAME
+          valueFrom:
+            secretKeyRef:
+              name: pg-load-test-secret
+              key: DB_NAME
+        
+        # Mount for results (optional)
+        volumeMounts:
+        - name: results
+          mountPath: /results
+      
+      # Volume for results (optional)
+      volumes:
+      - name: results
+        persistentVolumeClaim:
+          claimName: pg-load-test-results

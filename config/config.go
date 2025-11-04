@@ -158,7 +158,7 @@ func (c *Config) Validate() error {
 // GetConnectionString returns the PostgreSQL connection string
 func (c *DBConfig) GetConnectionString() string {
 	return fmt.Sprintf(
-		"host=%s port=%d user=%s password=%s dbname=%s sslmode=%s connect_timeout=10",
+		"host=%s port=%d user=%s password=%s dbname=%s sslmode=%s connect_timeout=30",
 		c.Host, c.Port, c.User, c.Password, c.DBName, c.SSLMode,
 	)
 }
