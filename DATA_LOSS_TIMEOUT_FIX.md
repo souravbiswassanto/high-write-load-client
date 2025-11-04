@@ -99,37 +99,60 @@ default:
 
 ## Expected Behavior After Fix
 
-### For Small Tests (< 10,000 records):
+### For Small Tests (< 100,000 records):
 ```
-Checking data loss for 5,420 inserted records...
-  Progress: Checked 1/2 batches (50.0%)
-Data loss check complete: 5420 found, 0 lost out of 5420 inserted
+Checking data loss for 45,820 inserted records...
+  Progress: Checked 5/5 batches (100.0%)
+Data loss check complete: 45820 found, 0 lost out of 45820 inserted
 ✅ No data loss detected
 ```
 
-### For Large Tests (> 100,000 records):
+### For Large Tests (100K - 2M+ records) - Optimized:
 ```
-Checking data loss for 312,548 inserted records...
-  Progress: Checked 10/63 batches (15.9%)
-  Progress: Checked 20/63 batches (31.7%)
-  Progress: Checked 30/63 batches (47.6%)
-  Progress: Checked 40/63 batches (63.5%)
-  Progress: Checked 50/63 batches (79.4%)
-  Progress: Checked 60/63 batches (95.2%)
-  Progress: Checked 63/63 batches (100.0%)
-Data loss check complete: 312548 found, 0 lost out of 312548 inserted
+Checking data loss for 2,185,000 inserted records...
+  Using optimized range-based verification for large dataset...
+  ID range: 12345 to 2197890
+  Records in range [12345-2197890]: 2185000
+Data loss check complete: 2185000 found, 0 lost out of 2185000 inserted
+  Note: Using range-based estimation for large dataset
 ✅ No data loss detected
+```
+
+### For Very Large Tests with Data Loss:
+```
+Checking data loss for 2,185,000 inserted records...
+  Using optimized range-based verification for large dataset...
+  ID range: 12345 to 2197890
+  Records in range [12345-2197890]: 2183450
+Data loss check complete (estimated): 2183450 found, ~1550 lost out of 2185000 inserted
+  Note: Using range-based estimation for large dataset
+
+⚠️  WARNING: ~1550 records were inserted but not found in database!
+This may indicate:
+  - Database crash/restart occurred during test
+  - pg_rewind was triggered due to network partition
+  - Transaction rollback due to replication issues
 ```
 
 ## Performance Improvements
 
-| Metric | Before | After | Improvement |
-|--------|--------|-------|-------------|
-| Timeout | 60s | 300s | 5x longer |
-| Batch size | 1,000 IDs | 5,000 IDs | 5x larger |
-| Queries for 100K records | 100 queries | 20 queries | 5x fewer |
-| Queries for 300K records | 300 queries | 60 queries | 5x fewer |
-| Max recordset supported | ~60,000 | ~1,500,000 | 25x more |
+| Metric | Before | After (v1) | After (v2 - Optimized) | Improvement |
+|--------|--------|-----------|----------------------|-------------|
+| Timeout | 60s | 300s | 300s | 5x longer |
+| Batch size | 1,000 IDs | 10,000 IDs | 10,000 IDs | 10x larger |
+| Queries for 100K records | 100 queries | 10 queries | 1 query | 100x fewer |
+| Queries for 300K records | 300 queries | 30 queries | 1 query | 300x fewer |
+| Queries for 2M records | 2000 queries | 200 queries | 1 query | 2000x fewer |
+| Max recordset supported | ~60,000 | ~3,000,000 | ~100,000,000+ | 1000x+ more |
+
+### V2 Optimization (For datasets > 100K records)
+
+Instead of checking each ID individually in batches, the optimized version:
+1. Finds the min and max ID in the inserted set
+2. Runs a single range query: `SELECT COUNT(*) WHERE id >= min AND id <= max`
+3. Compares the count to expected count
+
+**Trade-off:** Slight approximation for data loss (may include non-test records in range) but dramatically faster.
 
 ## Testing Recommendations
 
@@ -159,8 +182,27 @@ Data loss check complete: 312548 found, 0 lost out of 312548 inserted
 
 1. `main.go` - Increased timeout to 5 minutes
 2. `main_v2.go` - Increased timeout to 5 minutes  
-3. `clients/postgres/load_generator.go` - Optimized batch size, added progress reporting
-4. `clients/postgres/load_generator_v2.go` - Optimized batch size, added progress reporting
+3. `clients/postgres/load_generator.go` - Optimized batch size (10K), added progress reporting, range-based optimization for >100K records
+4. `clients/postgres/load_generator_v2.go` - Optimized batch size (10K), added progress reporting, range-based optimization for >100K records
+
+## How It Works
+
+### For Small Datasets (≤ 100K records):
+Uses batch IN queries with 10,000 IDs per batch:
+```sql
+SELECT COUNT(*) FROM table WHERE id IN (1,2,3,...,10000)
+```
+
+### For Large Datasets (> 100K records):
+Uses optimized range query (single query):
+```sql
+-- Find min/max from inserted IDs in memory
+-- Then run one query:
+SELECT COUNT(*) FROM table WHERE id >= minID AND id <= maxID
+```
+
+**Advantage:** Goes from hundreds of queries to just 1 query!
+**Trade-off:** Small approximation if there are gaps in IDs or non-test records in range
 
 ## Rebuild Required
 

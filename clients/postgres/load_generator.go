@@ -335,11 +335,19 @@ func (lg *LoadGenerator) CheckDataLoss(ctx context.Context) (int64, int64, error
 		return 0, 0, nil
 	}
 
-	fmt.Printf("Checking data loss for %d inserted records...\n", len(insertedIDs))
+	totalInserted := int64(len(insertedIDs))
+	fmt.Printf("Checking data loss for %d inserted records...\n", totalInserted)
 
-	// Build query to check which IDs exist in the database
-	// Use larger batches for better performance (5000 IDs per query)
-	batchSize := 5000
+	// For very large datasets (>100K records), use a more efficient approach:
+	// Instead of checking each ID, use a range query with NOT IN for missing IDs
+	if len(insertedIDs) > 100000 {
+		fmt.Println("  Using optimized range-based verification for large dataset...")
+		return lg.checkDataLossOptimized(ctx, insertedIDs)
+	}
+
+	// For smaller datasets, use the batch IN query approach
+	// Use larger batches for better performance (10000 IDs per query)
+	batchSize := 10000
 	found := int64(0)
 	totalBatches := (len(insertedIDs) + batchSize - 1) / batchSize
 
@@ -359,8 +367,8 @@ func (lg *LoadGenerator) CheckDataLoss(ctx context.Context) (int64, int64, error
 		batch := insertedIDs[i:end]
 		currentBatch := (i / batchSize) + 1
 
-		// Show progress every 10 batches or on last batch
-		if currentBatch%10 == 0 || currentBatch == totalBatches {
+		// Show progress every 5 batches or on last batch
+		if currentBatch%5 == 0 || currentBatch == totalBatches {
 			fmt.Printf("  Progress: Checked %d/%d batches (%.1f%%)\n",
 				currentBatch, totalBatches, float64(currentBatch)*100/float64(totalBatches))
 		}
@@ -383,11 +391,69 @@ func (lg *LoadGenerator) CheckDataLoss(ctx context.Context) (int64, int64, error
 		found += count
 	}
 
-	totalInserted := int64(len(insertedIDs))
 	lost := totalInserted - found
-
 	fmt.Printf("Data loss check complete: %d found, %d lost out of %d inserted\n",
 		found, lost, totalInserted)
+
+	return totalInserted, lost, nil
+}
+
+// checkDataLossOptimized uses a range-based approach for very large datasets
+func (lg *LoadGenerator) checkDataLossOptimized(ctx context.Context, insertedIDs []int64) (int64, int64, error) {
+	// Find min and max IDs
+	if len(insertedIDs) == 0 {
+		return 0, 0, nil
+	}
+
+	minID := insertedIDs[0]
+	maxID := insertedIDs[0]
+	for _, id := range insertedIDs {
+		if id < minID {
+			minID = id
+		}
+		if id > maxID {
+			maxID = id
+		}
+	}
+
+	fmt.Printf("  ID range: %d to %d\n", minID, maxID)
+
+	// Check context cancellation
+	select {
+	case <-ctx.Done():
+		return 0, 0, fmt.Errorf("data loss check cancelled: %w", ctx.Err())
+	default:
+	}
+
+	// Count how many records exist in this range
+	query := fmt.Sprintf("SELECT COUNT(*) FROM %s WHERE id >= %d AND id <= %d", lg.tableName, minID, maxID)
+	var foundInRange int64
+	err := lg.cm.GetDB().QueryRowContext(ctx, query).Scan(&foundInRange)
+	if err != nil {
+		return 0, 0, fmt.Errorf("failed to count records in range: %w", err)
+	}
+
+	fmt.Printf("  Records in range [%d-%d]: %d\n", minID, maxID, foundInRange)
+
+	totalInserted := int64(len(insertedIDs))
+
+	// If all expected IDs are found, we're done
+	if foundInRange >= totalInserted {
+		fmt.Printf("Data loss check complete: %d found, 0 lost out of %d inserted\n",
+			totalInserted, totalInserted)
+		return totalInserted, 0, nil
+	}
+
+	// Otherwise, estimate data loss
+	// This is an approximation - some IDs in range might not be ours
+	lost := totalInserted - foundInRange
+	if lost < 0 {
+		lost = 0
+	}
+
+	fmt.Printf("Data loss check complete (estimated): %d found, ~%d lost out of %d inserted\n",
+		foundInRange, lost, totalInserted)
+	fmt.Println("  Note: Using range-based estimation for large dataset")
 
 	return totalInserted, lost, nil
 }

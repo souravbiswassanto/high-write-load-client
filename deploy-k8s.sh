@@ -33,31 +33,31 @@ echo -e "${GREEN}✓ Connected to Kubernetes cluster${NC}\n"
 
 IMAGE_NAME="souravbiswassanto/pg-load-test:latest"
 
-if [ -f "Dockerfile" ]; then
-    docker build -t $IMAGE_NAME . || {
-        echo -e "${RED}Error: Docker build failed${NC}"
-        exit 1
-    }
-    echo -e "${GREEN}✓ Docker image built successfully${NC}\n"
-    docker push $IMAGE_NAME || {
-        echo -e "${YELLOW}Warning: Failed to push image to registry. Continuing anyway...${NC}"
-    }
-else
-    echo -e "${RED}Error: Dockerfile not found${NC}"
-    exit 1
-fi
+# if [ -f "Dockerfile" ]; then
+#     docker build -t $IMAGE_NAME . || {
+#         echo -e "${RED}Error: Docker build failed${NC}"
+#         exit 1
+#     }
+#     echo -e "${GREEN}✓ Docker image built successfully${NC}\n"
+#     docker push $IMAGE_NAME || {
+#         echo -e "${YELLOW}Warning: Failed to push image to registry. Continuing anyway...${NC}"
+#     }
+# else
+#     echo -e "${RED}Error: Dockerfile not found${NC}"
+#     exit 1
+# fi
 
-# Load image to kind if using kind
-if kubectl config current-context | grep -q "kind"; then
-    echo -e "${YELLOW}Detected kind cluster, loading image...${NC}"
-    kind load docker-image $IMAGE_NAME || {
-        echo -e "${YELLOW}Warning: Failed to load image to kind. Continuing anyway...${NC}"
-    }
-    echo -e "${GREEN}✓ Image loaded to kind${NC}\n"
-fi
+# # Load image to kind if using kind
+# if kubectl config current-context | grep -q "kind"; then
+#     echo -e "${YELLOW}Detected kind cluster, loading image...${NC}"
+#     kind load docker-image $IMAGE_NAME || {
+#         echo -e "${YELLOW}Warning: Failed to load image to kind. Continuing anyway...${NC}"
+#     }
+#     echo -e "${GREEN}✓ Image loaded to kind${NC}\n"
+# fi
 
-# Encode database credentials
-echo -e "${YELLOW}Configuring database credentials...${NC}"
+# # Encode database credentials
+# echo -e "${YELLOW}Configuring database credentials...${NC}"
 
 # Check if .env file exists
 if [ -f ".env" ]; then
