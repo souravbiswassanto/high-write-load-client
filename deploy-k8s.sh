@@ -8,7 +8,7 @@ set -e
 export DB_HOST="pg-ha-cluster.demo.svc.cluster.local"
 export DB_PORT="5432"
 export DB_USER="postgres"
-export DB_PASSWORD="SVuwzFvw!HJf;vLm"
+export DB_PASSWORD="AZ1XyTmDXh.Hh.77"
 export DB_NAME="postgres"
 
 # Colors for output

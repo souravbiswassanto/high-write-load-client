@@ -21,7 +21,7 @@ NAMESPACE="demo"
 PG_HOST="pg-ha-cluster.demo.svc.cluster.local"
 PG_PORT="5432"
 PG_USER="postgres"
-PG_PASSWORD="SVuwzFvw!HJf;vLm"
+PG_PASSWORD="AZ1XyTmDXh.Hh.77"
 PG_DATABASE="postgres"
 
 echo -e "${YELLOW}Step 1: Checking if namespace exists...${NC}"

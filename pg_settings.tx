@@ -239,7 +239,7 @@ postgres=# select name,unit,setting from pg_settings;
  port                                        |      | 5432
  post_auth_delay                             | s    | 0
  pre_auth_delay                              | s    | 0
- primary_conninfo                            |      | application_name=pg-ha-cluster-2 host=pg-ha-cluster user=postgres password=SVuwzFvw!HJf;vLm
+ primary_conninfo                            |      | application_name=pg-ha-cluster-2 host=pg-ha-cluster user=postgres password=AZ1XyTmDXh.Hh.77
  primary_slot_name                           |      | 
  quote_all_identifiers                       |      | off
  random_page_cost                            |      | 4
