@@ -13,8 +13,8 @@ data:
   CONCURRENT_WRITERS: "150"
   
   # Workload Distribution (must sum to 100)
-  READ_PERCENT: "5"
-  INSERT_PERCENT: "90"
+  READ_PERCENT: "20"
+  INSERT_PERCENT: "75"
   UPDATE_PERCENT: "5"
   
   # Batch Sizes

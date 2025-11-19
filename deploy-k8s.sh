@@ -139,3 +139,4 @@ if [[ $REPLY =~ ^[Yy]$ ]]; then
     echo -e "${YELLOW}Following logs (Ctrl+C to exit)...${NC}\n"
     kubectl logs -f -n demo $POD_NAME
 fi
+ 
