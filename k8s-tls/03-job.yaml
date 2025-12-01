@@ -1,0 +1,47 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: pg-load-test-tls
+  namespace: demo
+spec:
+  # Allow job to run for up to 30 minutes
+  activeDeadlineSeconds: 1800
+  backoffLimit: 0
+  template:
+    metadata:
+      labels:
+        app: pg-load-test-tls
+    spec:
+      restartPolicy: Never
+      containers:
+      - name: load-test
+        image: souravbiswassanto/pg-load-test:latest
+        imagePullPolicy: Always
+        resources:
+          requests:
+            memory: "2Gi"
+            cpu: "1000m"
+          limits:
+            memory: "2Gi"
+            cpu: "2000m"
+        envFrom:
+        - configMapRef:
+            name: pg-load-test-config-tls
+        - secretRef:
+            name: pg-load-test-secret-tls
+        volumeMounts:
+        - name: tls-certs
+          mountPath: /tls/certs
+          readOnly: true
+      volumes:
+      - name: tls-certs
+        secret:
+          secretName: pg-ha-cluster-client-cert
+          items:
+          - key: ca.crt
+            path: ca.crt
+          - key: tls.crt
+            path: tls.crt
+          - key: tls.key
+            path: tls.key
+            mode: 0600

@@ -44,6 +44,13 @@ type DBConfig struct {
 	DBName   string
 	SSLMode  string
 
+	// SSL/TLS settings
+	SSLEnabled     bool   // Whether SSL is enabled
+	ClientAuthMode string // Authentication mode: "cert", "scram", "md5", ""
+	SSLRootCert    string // Path to CA certificate
+	SSLCert        string // Path to client certificate
+	SSLKey         string // Path to client private key
+
 	// Connection pool settings
 	MaxOpenConns int
 	MaxIdleConns int
@@ -80,6 +87,14 @@ func LoadFromEnv() (*Config, error) {
 	cfg.DB.Password = getEnv("DB_PASSWORD", "")
 	cfg.DB.DBName = getEnv("DB_NAME", "testdb")
 	cfg.DB.SSLMode = getEnv("DB_SSL_MODE", "disable")
+
+	// SSL/TLS configuration
+	cfg.DB.SSLEnabled = getEnv("SSL", "OFF") == "ON"
+	cfg.DB.ClientAuthMode = getEnv("CLIENT_AUTH_MODE", "") // cert, scram, md5, or empty
+	cfg.DB.SSLRootCert = getEnv("SSL_ROOT_CERT", "clients/postgres/certificates/ca.crt")
+	cfg.DB.SSLCert = getEnv("SSL_CERT", "clients/postgres/certificates/tls.crt")
+	cfg.DB.SSLKey = getEnv("SSL_KEY", "clients/postgres/certificates/tls.key")
+
 	cfg.DB.MaxOpenConns = getEnvAsInt("DB_MAX_OPEN_CONNS", 50)
 	cfg.DB.MaxIdleConns = getEnvAsInt("DB_MAX_IDLE_CONNS", 10)
 	cfg.DB.MinFreeConns = getEnvAsInt("DB_MIN_FREE_CONNS", 5)
@@ -157,10 +172,47 @@ func (c *Config) Validate() error {
 
 // GetConnectionString returns the PostgreSQL connection string
 func (c *DBConfig) GetConnectionString() string {
-	return fmt.Sprintf(
-		"host=%s port=%d user=%s password=%s dbname=%s sslmode=%s connect_timeout=30",
-		c.Host, c.Port, c.User, c.Password, c.DBName, c.SSLMode,
-	)
+	var connStr string
+
+	if c.SSLEnabled {
+		// When SSL is ON, we must connect using SSL
+		if c.ClientAuthMode == "cert" {
+			// Full certificate authentication (cert + CA)
+			if c.SSLMode == "verify-full" || c.SSLMode == "verify-ca" {
+				connStr = fmt.Sprintf("host=%s port=%d user=%s password=%s dbname=%s connect_timeout=30 sslmode=%s sslrootcert=%s sslcert=%s sslkey=%s",
+					c.Host, c.Port, c.User, c.Password, c.DBName, c.SSLMode, c.SSLRootCert, c.SSLCert, c.SSLKey)
+			} else {
+				// For other SSL modes with cert auth (require, prefer)
+				sslMode := c.SSLMode
+				if sslMode == "" || sslMode == "disable" {
+					sslMode = "require"
+				}
+				connStr = fmt.Sprintf("host=%s port=%d user=%s password=%s dbname=%s connect_timeout=30 sslmode=%s sslcert=%s sslkey=%s",
+					c.Host, c.Port, c.User, c.Password, c.DBName, sslMode, c.SSLCert, c.SSLKey)
+			}
+		} else {
+			// Password authentication (scram/md5) over SSL
+			if c.SSLMode == "verify-full" || c.SSLMode == "verify-ca" {
+				// CA + password auth (md5/scram)
+				connStr = fmt.Sprintf("host=%s port=%d user=%s password=%s dbname=%s connect_timeout=30 sslmode=%s sslrootcert=%s",
+					c.Host, c.Port, c.User, c.Password, c.DBName, c.SSLMode, c.SSLRootCert)
+			} else {
+				// Password only auth (no CA verification)
+				sslMode := c.SSLMode
+				if sslMode == "" || sslMode == "disable" {
+					sslMode = "require"
+				}
+				connStr = fmt.Sprintf("host=%s port=%d user=%s password=%s dbname=%s connect_timeout=30 sslmode=%s",
+					c.Host, c.Port, c.User, c.Password, c.DBName, sslMode)
+			}
+		}
+	} else {
+		// Non-SSL connection
+		connStr = fmt.Sprintf("host=%s port=%d user=%s password=%s dbname=%s connect_timeout=30 sslmode=disable",
+			c.Host, c.Port, c.User, c.Password, c.DBName)
+	}
+
+	return connStr
 }
 
 // Helper functions

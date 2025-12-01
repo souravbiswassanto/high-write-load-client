@@ -56,7 +56,7 @@ Encode credentials:
 echo -n "127.0.0.1" | base64      # Your DB host
 echo -n "5678" | base64           # Your DB port
 echo -n "postgres" | base64
-echo -n "AZ1XyTmDXh.Hh.77" | base64
+echo -n "CIX6TzfTYFn8~pj4" | base64
 echo -n "postgres" | base64
 ```
 

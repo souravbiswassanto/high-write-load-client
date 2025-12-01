@@ -122,7 +122,7 @@ func (lg *LoadGenerator) Initialize(ctx context.Context) error {
 	return nil
 }
 
-// seedInitialData inserts initial records for update operations
+// seedInitialData inserts initial records for update operations (WITHOUT tracking IDs for data loss check)
 func (lg *LoadGenerator) seedInitialData(ctx context.Context, count int) error {
 	batchSize := 1000
 	for i := 0; i < count; i += batchSize {
@@ -136,7 +136,8 @@ func (lg *LoadGenerator) seedInitialData(ctx context.Context, count int) error {
 			records[j] = lg.generateRecord()
 		}
 
-		if err := lg.batchInsert(ctx, records); err != nil {
+		// Use batchInsertWithoutTracking to avoid polluting data loss metrics
+		if err := lg.batchInsertWithoutTracking(ctx, records); err != nil {
 			return err
 		}
 	}
@@ -256,6 +257,41 @@ func (lg *LoadGenerator) batchInsert(ctx context.Context, records []TestRecord) 
 	}
 
 	return rows.Err()
+}
+
+// batchInsertWithoutTracking inserts records without tracking IDs (used for seeding)
+func (lg *LoadGenerator) batchInsertWithoutTracking(ctx context.Context, records []TestRecord) error {
+	if len(records) == 0 {
+		return nil
+	}
+
+	// Build bulk insert query
+	valueStrings := make([]string, 0, len(records))
+	valueArgs := make([]interface{}, 0, len(records)*7)
+
+	for i, record := range records {
+		valueStrings = append(valueStrings, fmt.Sprintf("($%d, $%d, $%d, $%d, $%d, $%d, $%d)",
+			i*7+1, i*7+2, i*7+3, i*7+4, i*7+5, i*7+6, i*7+7))
+
+		valueArgs = append(valueArgs,
+			record.Name,
+			record.Email,
+			record.Age,
+			record.Address,
+			record.PhoneNumber,
+			record.CreatedAt,
+			record.Data,
+		)
+	}
+
+	// No RETURNING clause - we don't track seed data IDs
+	query := fmt.Sprintf(`
+		INSERT INTO %s (name, email, age, address, phone_number, created_at, data)
+		VALUES %s
+	`, lg.tableName, strings.Join(valueStrings, ","))
+
+	_, err := lg.cm.GetDB().ExecContext(ctx, query, valueArgs...)
+	return err
 }
 
 // performUpdate executes an update operation
@@ -433,19 +469,27 @@ func (lg *LoadGenerator) checkDataLossOptimized(ctx context.Context, insertedIDs
 		fmt.Println("  Using approximate count for very large dataset...")
 
 		// Use pg_class statistics (instant!)
-		var approxCount int64
+		var approxCount sql.NullInt64
 		statsQuery := fmt.Sprintf("SELECT reltuples::bigint FROM pg_class WHERE relname = '%s'", lg.tableName)
 		err := lg.cm.GetDB().QueryRowContext(ctx, statsQuery).Scan(&approxCount)
-		if err != nil {
-			// Fallback to sampled count if stats not available
-			fmt.Println("  Statistics not available, using sampled count...")
+		if err != nil || !approxCount.Valid || approxCount.Int64 <= 0 {
+			// Fallback to sampled count if stats not available or invalid
+			if err != nil {
+				fmt.Printf("  Statistics query error: %v\n", err)
+			} else if !approxCount.Valid {
+				fmt.Println("  Statistics returned NULL")
+			} else {
+				fmt.Printf("  Statistics returned invalid value: %d\n", approxCount.Int64)
+			}
+			fmt.Println("  Falling back to sampled count...")
 			return lg.checkDataLossSampled(ctx, minID, maxID, totalInserted)
 		}
 
-		fmt.Printf("  Approximate total records in table: %d\n", approxCount)
+		count := approxCount.Int64
+		fmt.Printf("  Approximate total records in table: %d\n", count)
 
 		// Estimate data loss based on approximate count
-		lost := totalInserted - approxCount
+		lost := totalInserted - count
 		if lost < 0 {
 			lost = 0
 		}
@@ -453,7 +497,7 @@ func (lg *LoadGenerator) checkDataLossOptimized(ctx context.Context, insertedIDs
 		lossPercent := float64(lost) / float64(totalInserted) * 100
 
 		fmt.Printf("Data loss check complete (approximate): %d found, ~%d lost out of %d inserted\n",
-			approxCount, lost, totalInserted)
+			count, lost, totalInserted)
 		fmt.Printf("  Estimated data loss: %.2f%%\n", lossPercent)
 		fmt.Println("  Note: Using table statistics for speed (approximate ±5%)")
 

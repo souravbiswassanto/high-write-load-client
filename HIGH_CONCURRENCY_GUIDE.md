@@ -41,7 +41,7 @@ DB_MIN_FREE_CONNS=50              # Safety buffer
 DB_HOST=127.0.0.1
 DB_PORT=5678
 DB_USER=postgres
-DB_PASSWORD='AZ1XyTmDXh.Hh.77'
+DB_PASSWORD='CIX6TzfTYFn8~pj4'
 DB_NAME=postgres
 DB_SSL_MODE=disable
 
