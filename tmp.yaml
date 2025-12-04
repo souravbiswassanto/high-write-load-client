@@ -1,0 +1,102 @@
+apiVersion: kubedb.com/v1
+kind: Postgres
+metadata:
+  name: tmp
+  namespace: demo
+spec:
+  allowedSchemas:
+    namespaces:
+      from: Same
+  clientAuthMode: md5
+  deletionPolicy: Delete
+  healthChecker:
+    failureThreshold: 1
+    periodSeconds: 10
+    timeoutSeconds: 10
+  leaderElection:
+    electionTick: 10
+    heartbeatTick: 1
+    maximumLagBeforeFailover: 67108864
+    period: 300ms
+    transferLeadershipInterval: 1s
+    transferLeadershipTimeout: 1m0s
+  podTemplate:
+    controller: {}
+    metadata: {}
+    spec:
+      containers:
+      - name: postgres
+        resources:
+          limits:
+            memory: 3Gi
+          requests:
+            cpu: 200m
+            memory: 512Mi
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
+          runAsGroup: 70
+          runAsNonRoot: true
+          runAsUser: 70
+          seccompProfile:
+            type: RuntimeDefault
+      - args:
+        - --v=5
+        name: pg-coordinator
+        resources:
+          limits:
+            memory: 256Mi
+          requests:
+            cpu: 200m
+            memory: 256Mi
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
+          runAsGroup: 70
+          runAsNonRoot: true
+          runAsUser: 70
+          seccompProfile:
+            type: RuntimeDefault
+      initContainers:
+      - name: postgres-init-container
+        resources:
+          limits:
+            memory: 512Mi
+          requests:
+            cpu: 200m
+            memory: 256Mi
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
+          runAsGroup: 70
+          runAsNonRoot: true
+          runAsUser: 70
+          seccompProfile:
+            type: RuntimeDefault
+      podPlacementPolicy:
+        name: default
+      securityContext:
+        fsGroup: 70
+        runAsGroup: 70
+        runAsUser: 70
+      serviceAccountName: pg-ha-cluster
+  replicas: 3
+  replication:
+    forceFailOverAcceptingDataLossAfter: 2m0s
+    walKeepSize: 12000
+    walLimitPolicy: WALKeepSize
+  standbyMode: Hot
+  storage:
+    accessModes:
+    - ReadWriteOnce
+    resources:
+      requests:
+        storage: 3Gi
+  storageType: Durable
+  version: "16.4"
