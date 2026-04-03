@@ -23,6 +23,8 @@ import (
 	"time"
 )
 
+const LimitArraySize = 1000000
+
 // MetricsV2 tracks all performance metrics including read operations
 type MetricsV2 struct {
 	// Counters
@@ -103,9 +105,9 @@ func NewV2() *MetricsV2 {
 	return &MetricsV2{
 		startTime:       time.Now(),
 		lastReportTime:  time.Now(),
-		readLatencies:   make([]time.Duration, 0, 10000),
-		insertLatencies: make([]time.Duration, 0, 10000),
-		updateLatencies: make([]time.Duration, 0, 10000),
+		readLatencies:   make([]time.Duration, 0, LimitArraySize),
+		insertLatencies: make([]time.Duration, 0, LimitArraySize),
+		updateLatencies: make([]time.Duration, 0, LimitArraySize),
 	}
 }
 
@@ -116,8 +118,9 @@ func (m *MetricsV2) RecordRead(latency time.Duration, bytesRead int64) {
 
 	m.latencyMutex.Lock()
 	m.readLatencies = append(m.readLatencies, latency)
-	if len(m.readLatencies) > 10000 {
-		m.readLatencies = m.readLatencies[len(m.readLatencies)-10000:]
+	// TODO:
+	if len(m.readLatencies) > LimitArraySize {
+		m.readLatencies = m.readLatencies[len(m.readLatencies)-LimitArraySize:]
 	}
 	m.latencyMutex.Unlock()
 }
@@ -129,8 +132,9 @@ func (m *MetricsV2) RecordInsert(latency time.Duration, bytesWritten int64) {
 
 	m.latencyMutex.Lock()
 	m.insertLatencies = append(m.insertLatencies, latency)
-	if len(m.insertLatencies) > 10000 {
-		m.insertLatencies = m.insertLatencies[len(m.insertLatencies)-10000:]
+	// TODO:
+	if len(m.insertLatencies) > LimitArraySize {
+		m.insertLatencies = m.insertLatencies[len(m.insertLatencies)-LimitArraySize:]
 	}
 	m.latencyMutex.Unlock()
 }
@@ -160,8 +164,8 @@ func (m *MetricsV2) RecordUpdate(latency time.Duration, bytesWritten int64) {
 
 	m.latencyMutex.Lock()
 	m.updateLatencies = append(m.updateLatencies, latency)
-	if len(m.updateLatencies) > 10000 {
-		m.updateLatencies = m.updateLatencies[len(m.updateLatencies)-10000:]
+	if len(m.updateLatencies) > LimitArraySize {
+		m.updateLatencies = m.updateLatencies[len(m.updateLatencies)-LimitArraySize:]
 	}
 	m.latencyMutex.Unlock()
 }

@@ -71,7 +71,7 @@ type WorkloadConfig struct {
 	InsertPercent int    // Percentage of insert operations (0-100)
 	UpdatePercent int    // Percentage of update operations (0-100)
 	TableName     string // Test table name
-
+	SeedDataRows  int    // Number of seed rows to pre-populate for read operations
 	// Read operation settings
 	ReadBatchSize int // Number of records to fetch per read operation
 }
@@ -113,7 +113,7 @@ func LoadFromEnv() (*Config, error) {
 	cfg.Workload.UpdatePercent = getEnvAsInt("UPDATE_PERCENT", 30)
 	cfg.Workload.TableName = getEnv("TABLE_NAME", "load_test_data")
 	cfg.Workload.ReadBatchSize = getEnvAsInt("READ_BATCH_SIZE", 10)
-
+	cfg.Workload.SeedDataRows = getEnvAsInt("SEED_DATA_ROWS", 50000)
 	// Validate configuration
 	if err := cfg.Validate(); err != nil {
 		return nil, err

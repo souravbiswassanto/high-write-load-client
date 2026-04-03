@@ -18,9 +18,12 @@ package metrics
 
 import (
 	"fmt"
+	"sort"
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"k8s.io/klog/v2"
 )
 
 // Metrics tracks all performance metrics for the load test
@@ -94,8 +97,8 @@ func New() *Metrics {
 	return &Metrics{
 		startTime:       time.Now(),
 		lastReportTime:  time.Now(),
-		insertLatencies: make([]time.Duration, 0, 10000),
-		updateLatencies: make([]time.Duration, 0, 10000),
+		insertLatencies: make([]time.Duration, 0, LimitArraySize),
+		updateLatencies: make([]time.Duration, 0, LimitArraySize),
 	}
 }
 
@@ -107,8 +110,8 @@ func (m *Metrics) RecordInsert(latency time.Duration, bytesWritten int64) {
 	m.latencyMutex.Lock()
 	m.insertLatencies = append(m.insertLatencies, latency)
 	// Keep only last 10000 samples to prevent memory issues
-	if len(m.insertLatencies) > 10000 {
-		m.insertLatencies = m.insertLatencies[len(m.insertLatencies)-10000:]
+	if len(m.insertLatencies) > LimitArraySize {
+		m.insertLatencies = m.insertLatencies[len(m.insertLatencies)-LimitArraySize:]
 	}
 	m.latencyMutex.Unlock()
 }
@@ -139,8 +142,8 @@ func (m *Metrics) RecordUpdate(latency time.Duration, bytesWritten int64) {
 	m.latencyMutex.Lock()
 	m.updateLatencies = append(m.updateLatencies, latency)
 	// Keep only last 10000 samples
-	if len(m.updateLatencies) > 10000 {
-		m.updateLatencies = m.updateLatencies[len(m.updateLatencies)-10000:]
+	if len(m.updateLatencies) > LimitArraySize {
+		m.updateLatencies = m.updateLatencies[len(m.updateLatencies)-LimitArraySize:]
 	}
 	m.latencyMutex.Unlock()
 }
@@ -272,14 +275,19 @@ func calculatePercentile(durations []time.Duration, percentile int) time.Duratio
 	sorted := make([]time.Duration, len(durations))
 	copy(sorted, durations)
 
+	sort.Slice(sorted, func(i, j int) bool {
+		return sorted[i] < sorted[j]
+	})
 	// Simple bubble sort (good enough for our sampling size)
-	for i := 0; i < len(sorted); i++ {
-		for j := i + 1; j < len(sorted); j++ {
-			if sorted[i] > sorted[j] {
-				sorted[i], sorted[j] = sorted[j], sorted[i]
-			}
-		}
-	}
+	//for i := 0; i < len(sorted); i++ {
+	//	for j := i + 1; j < len(sorted); j++ {
+	//		if sorted[i] > sorted[j] {
+	//			sorted[i], sorted[j] = sorted[j], sorted[i]
+	//		}
+	//	}
+	//}
+	klog.Infoln("---------------------")
+	klog.Infoln("Sorted latencies for percentile calculation", "percentile", percentile, "sorted length", len(sorted))
 
 	index := int(float64(len(sorted)) * float64(percentile) / 100.0)
 	if index >= len(sorted) {

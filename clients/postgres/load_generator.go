@@ -55,6 +55,35 @@ type TestRecord struct {
 	Score       int    // Score field for sorting/filtering
 }
 
+// TotalBytes returns an approximate number of bytes that would be
+// sent to PostgreSQL when inserting or updating this record.
+// Assumptions:
+//   - int and int64 are stored as 8 bytes each.
+//   - time.Time is stored as 8 bytes (PostgreSQL timestamp).
+//   - Strings are sent as raw UTF-8 bytes without length prefixes.
+//     (In reality the wire protocol adds a 4‑byte length per field,
+//     but that overhead is not counted here for simplicity.)
+func (t TestRecord) TotalBytes() int64 {
+	total := 0
+
+	// Fixed-size fields
+	total += 8 // ID (int64)
+	total += 8 // Age (int, assumed 64-bit)
+	total += 8 // Score (int, assumed 64-bit)
+	total += 8 // CreatedAt (time.Time)
+	total += 8 // UpdatedAt (time.Time)
+
+	// Variable-length strings (UTF-8 byte length)
+	total += len(t.Name)
+	total += len(t.Email)
+	total += len(t.Address)
+	total += len(t.PhoneNumber)
+	total += len(t.Data)
+	total += len(t.Status)
+
+	return int64(total)
+}
+
 // NewLoadGenerator creates a new load generator
 func NewLoadGenerator(cm *ConnectionManager, cfg *config.Config, m *metrics.Metrics) *LoadGenerator {
 	return &LoadGenerator{

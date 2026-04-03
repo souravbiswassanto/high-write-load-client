@@ -4,7 +4,7 @@
 APP_NAME=load-client
 DOCKER_IMAGE=high-write-load-client
 DOCKER_TAG=latest
-REGISTRY=your-registry
+REGISTRY=souravbiswassanto
 
 help: ## Display this help message
 	@echo "Available commands:"

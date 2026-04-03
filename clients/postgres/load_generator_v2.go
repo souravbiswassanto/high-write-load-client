@@ -28,6 +28,7 @@ import (
 
 	"github.com/souravbiswassanto/high-write-load-client/config"
 	"github.com/souravbiswassanto/high-write-load-client/metrics"
+	"k8s.io/klog/v2"
 )
 
 // LoadGeneratorV2 generates mixed read/write load on PostgreSQL
@@ -105,7 +106,7 @@ func (lg *LoadGeneratorV2) Initialize(ctx context.Context) error {
 
 	if count == 0 {
 		fmt.Println("Seeding table with initial data...")
-		if err := lg.seedInitialData(ctx, 50000); err != nil { // Seed more data for reads
+		if err := lg.seedInitialData(ctx, lg.config.Workload.SeedDataRows); err != nil { // Seed more data for reads
 			return fmt.Errorf("failed to seed initial data: %w", err)
 		}
 		count = 50000
@@ -356,17 +357,17 @@ func (lg *LoadGeneratorV2) readByNamePattern(ctx context.Context, rng *rand.Rand
 }
 
 // performInsert executes a batch insert operation
+// Generate batch of records
+// Calculate approximate size
 func (lg *LoadGeneratorV2) performInsert(ctx context.Context, rng *rand.Rand) {
 	start := time.Now()
 
-	// Generate batch of records
+	bytesWritten := int64(0) // Rough estimate with new fields
 	records := make([]TestRecord, lg.config.Load.BatchSize)
 	for i := 0; i < lg.config.Load.BatchSize; i++ {
 		records[i] = lg.generateRecord()
+		bytesWritten += records[i].TotalBytes()
 	}
-
-	// Calculate approximate size
-	bytesWritten := int64(len(records) * 600) // Rough estimate with new fields
 
 	// Execute batch insert
 	err := lg.batchInsert(ctx, records)
@@ -513,7 +514,7 @@ func (lg *LoadGeneratorV2) performUpdate(ctx context.Context, rng *rand.Rand) {
 		return
 	}
 
-	bytesWritten := int64(500) // Rough estimate for update
+	bytesWritten := record.TotalBytes() // Rough estimate for update
 	lg.metrics.RecordUpdate(latency, bytesWritten)
 }
 
@@ -544,73 +545,85 @@ func (lg *LoadGeneratorV2) Stop() {
 
 // CheckDataLoss verifies how many inserted records are actually in the database
 func (lg *LoadGeneratorV2) CheckDataLoss(ctx context.Context) (int64, int64, error) {
-	// Get all IDs that were supposedly inserted
-	insertedIDs := lg.metrics.GetInsertedIDs()
-	if len(insertedIDs) == 0 {
-		return 0, 0, nil
+	query := fmt.Sprintf("SELECT COUNT(*) FROM %s",
+		lg.tableName)
+	var tot int64
+	err := lg.cm.GetDB().QueryRowContext(ctx, query).Scan(&tot)
+	if err != nil {
+		return 0, 0, fmt.Errorf("failed to count total records for data loss check: %w", err)
 	}
+	klog.Infoln("Total records in table:", tot)
+	klog.Infoln("totalRows in LoadGenerator:", lg.totalRows.Load())
 
-	totalInserted := int64(len(insertedIDs))
-	fmt.Printf("Checking data loss for %d inserted records...\n", totalInserted)
+	return tot, lg.totalRows.Load() - tot, nil
 
-	// For very large datasets (>100K records), use a more efficient approach:
-	// Instead of checking each ID, use a range query with NOT IN for missing IDs
-	if len(insertedIDs) > 100000 {
-		fmt.Println("  Using optimized range-based verification for large dataset...")
-		return lg.checkDataLossOptimized(ctx, insertedIDs)
-	}
-
-	// For smaller datasets, use the batch IN query approach
-	// Use larger batches for better performance (10000 IDs per query)
-	batchSize := 10000
-	found := int64(0)
-	totalBatches := (len(insertedIDs) + batchSize - 1) / batchSize
-
-	for i := 0; i < len(insertedIDs); i += batchSize {
-		// Check context cancellation
-		select {
-		case <-ctx.Done():
-			return 0, 0, fmt.Errorf("data loss check cancelled: %w", ctx.Err())
-		default:
-		}
-
-		end := i + batchSize
-		if end > len(insertedIDs) {
-			end = len(insertedIDs)
-		}
-
-		batch := insertedIDs[i:end]
-		currentBatch := (i / batchSize) + 1
-
-		// Show progress every 5 batches or on last batch
-		if currentBatch%5 == 0 || currentBatch == totalBatches {
-			fmt.Printf("  Progress: Checked %d/%d batches (%.1f%%)\n",
-				currentBatch, totalBatches, float64(currentBatch)*100/float64(totalBatches))
-		}
-
-		// Build the IN clause
-		var idStrs []string
-		for _, id := range batch {
-			idStrs = append(idStrs, fmt.Sprintf("%d", id))
-		}
-
-		query := fmt.Sprintf("SELECT COUNT(*) FROM %s WHERE id IN (%s)",
-			lg.tableName, strings.Join(idStrs, ","))
-
-		var count int64
-		err := lg.cm.GetDB().QueryRowContext(ctx, query).Scan(&count)
-		if err != nil {
-			return 0, 0, fmt.Errorf("failed to check data loss (batch %d/%d): %w", currentBatch, totalBatches, err)
-		}
-
-		found += count
-	}
-
-	lost := totalInserted - found
-	fmt.Printf("Data loss check complete: %d found, %d lost out of %d inserted\n",
-		found, lost, totalInserted)
-
-	return totalInserted, lost, nil
+	//// Get all IDs that were supposedly inserted
+	//insertedIDs := lg.metrics.GetInsertedIDs()
+	//if len(insertedIDs) == 0 {
+	//	return 0, 0, nil
+	//}
+	//
+	//totalInserted := int64(len(insertedIDs))
+	//fmt.Printf("Checking data loss for %d inserted records...\n", totalInserted)
+	//
+	//// For very large datasets (>100K records), use a more efficient approach:
+	//// Instead of checking each ID, use a range query with NOT IN for missing IDs
+	//if len(insertedIDs) > 100000 {
+	//	fmt.Println("  Using optimized range-based verification for large dataset...")
+	//	return lg.checkDataLossOptimized(ctx, insertedIDs)
+	//}
+	//
+	//// For smaller datasets, use the batch IN query approach
+	//// Use larger batches for better performance (10000 IDs per query)
+	//batchSize := 10000
+	//found := int64(0)
+	//totalBatches := (len(insertedIDs) + batchSize - 1) / batchSize
+	//
+	//for i := 0; i < len(insertedIDs); i += batchSize {
+	//	// Check context cancellation
+	//	select {
+	//	case <-ctx.Done():
+	//		return 0, 0, fmt.Errorf("data loss check cancelled: %w", ctx.Err())
+	//	default:
+	//	}
+	//
+	//	end := i + batchSize
+	//	if end > len(insertedIDs) {
+	//		end = len(insertedIDs)
+	//	}
+	//
+	//	batch := insertedIDs[i:end]
+	//	currentBatch := (i / batchSize) + 1
+	//
+	//	// Show progress every 5 batches or on last batch
+	//	if currentBatch%5 == 0 || currentBatch == totalBatches {
+	//		fmt.Printf("  Progress: Checked %d/%d batches (%.1f%%)\n",
+	//			currentBatch, totalBatches, float64(currentBatch)*100/float64(totalBatches))
+	//	}
+	//
+	//	// Build the IN clause
+	//	var idStrs []string
+	//	for _, id := range batch {
+	//		idStrs = append(idStrs, fmt.Sprintf("%d", id))
+	//	}
+	//
+	//	query := fmt.Sprintf("SELECT COUNT(*) FROM %s WHERE id IN (%s)",
+	//		lg.tableName, strings.Join(idStrs, ","))
+	//
+	//	var count int64
+	//	err := lg.cm.GetDB().QueryRowContext(ctx, query).Scan(&count)
+	//	if err != nil {
+	//		return 0, 0, fmt.Errorf("failed to check data loss (batch %d/%d): %w", currentBatch, totalBatches, err)
+	//	}
+	//
+	//	found += count
+	//}
+	//
+	//lost := totalInserted - found
+	//fmt.Printf("Data loss check complete: %d found, %d lost out of %d inserted\n",
+	//	found, lost, totalInserted)
+	//
+	//return totalInserted, lost, nil
 }
 
 // checkDataLossOptimized uses a range-based approach for very large datasets
