@@ -254,7 +254,7 @@ func (lg *LoadGeneratorV2) readByIDRange(ctx context.Context, rng *rand.Rand) (i
 		if err != nil {
 			return bytesRead, err
 		}
-		bytesRead += int64(len(r.Data) + len(r.Name) + len(r.Email) + len(r.Address))
+		bytesRead += r.TotalBytes()
 	}
 
 	return bytesRead, rows.Err()

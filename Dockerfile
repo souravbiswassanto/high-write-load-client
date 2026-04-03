@@ -9,6 +9,7 @@ RUN go mod download
 
 # Copy source code
 COPY . .
+RUN mv .env.chaos .env
 
 # Build the application
 RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o load-client .

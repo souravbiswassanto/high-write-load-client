@@ -7,19 +7,19 @@ metadata:
     app: pg-load-test
 data:
   # Test Duration (in seconds)
-  TEST_RUN_DURATION: "1400"
+  TEST_RUN_DURATION: "400"
   
   # Concurrency Settings
-  CONCURRENT_WRITERS: "150"
+  CONCURRENT_WRITERS: "20"
   
   # Workload Distribution (must sum to 100)
-  READ_PERCENT: "20"
-  INSERT_PERCENT: "75"
-  UPDATE_PERCENT: "5"
+  READ_PERCENT: "80"
+  INSERT_PERCENT: "10"
+  UPDATE_PERCENT: "10"
   
   # Batch Sizes
   BATCH_SIZE: "100"
-  READ_BATCH_SIZE: "20"
+  READ_BATCH_SIZE: "100"
   
   # Database Settings
   TABLE_NAME: "load_test_data"
@@ -33,4 +33,4 @@ data:
   MIN_FREE_CONNS: "5"
   
   # Reporting
-  REPORT_INTERVAL: "10s"
+  REPORT_INTERVAL: "20s"

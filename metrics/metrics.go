@@ -22,8 +22,6 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
-
-	"k8s.io/klog/v2"
 )
 
 // Metrics tracks all performance metrics for the load test
@@ -286,8 +284,6 @@ func calculatePercentile(durations []time.Duration, percentile int) time.Duratio
 	//		}
 	//	}
 	//}
-	klog.Infoln("---------------------")
-	klog.Infoln("Sorted latencies for percentile calculation", "percentile", percentile, "sorted length", len(sorted))
 
 	index := int(float64(len(sorted)) * float64(percentile) / 100.0)
 	if index >= len(sorted) {

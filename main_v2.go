@@ -71,14 +71,20 @@ func main() {
 	// Setup signal handling for graceful shutdown
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
+	var cm *postgres.ConnectionManager
 
-	// Initialize connection manager
-	fmt.Println("Connecting to PostgreSQL...")
-	cm, err := postgres.NewConnectionManager(&cfg.DB)
-	if err != nil {
-		fmt.Printf("Failed to create connection manager: %v\n", err)
-		os.Exit(1)
+	for {
+		tcm, err := postgres.NewConnectionManager(&cfg.DB)
+		if err != nil {
+			fmt.Printf("Failed to create connection manager: %v\n", err)
+			fmt.Println("Retrying in 5 seconds...")
+			time.Sleep(5 * time.Second)
+			continue
+		}
+		cm = tcm
+		break
 	}
+
 	defer cm.Close()
 
 	// Initialize metrics

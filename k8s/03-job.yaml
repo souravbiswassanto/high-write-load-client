@@ -27,7 +27,7 @@ spec:
       containers:
       - name: load-test
         # Replace with your image registry and tag
-        image: souravbiswassanto/pg-load-test:latest
+        image: souravbiswassanto/high-write-load-client:latest
         imagePullPolicy: Always
       
         # Command to run        
